@@ -1,0 +1,31 @@
+<!--
+  Navbar component markup.
+  Used as reference for the header section in index.html.
+  In a build-step project, this would be imported and injected.
+-->
+<header class="app-header">
+  <div style="display:flex;align-items:center;gap:8px;min-width:0">
+    <button class="mobile-menu-btn" id="mobileMenuBtn"><i class="fas fa-bars"></i></button>
+    <div class="logo-area">
+      <div class="header-logo">
+        <svg viewBox="0 0 200 200" width="42" height="42">
+          <circle cx="100" cy="100" r="94" fill="#0a5c36" stroke="#f9c74f" stroke-width="8"/>
+          <rect x="52" y="62" width="96" height="62" rx="6" fill="white" stroke="#f9c74f" stroke-width="4"/>
+          <path d="M120 96 L126 104 L138 88" fill="none" stroke="#f9c74f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M40 124 L160 124 L168 138 L32 138 Z" fill="#f9c74f"/>
+        </svg>
+      </div>
+      <h1>UV ARC <span>· Academic Resource Center</span></h1>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <button class="theme-toggle" id="themeToggleBtn"><i class="fas fa-moon"></i></button>
+    <div class="user-badge" id="userBadge">
+      <div class="mini-avatar" id="headerAvatar">MS</div>
+      <div class="user-text">
+        <span id="headerUserName">Maria Santos</span>
+        <span class="role-mini" id="headerRoleTag">Student</span>
+      </div>
+    </div>
+  </div>
+</header>
