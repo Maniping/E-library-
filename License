@@ -1,0 +1,18 @@
+
+---
+
+## 🔄 Key Changes from Monolith → Modular
+
+| Aspect | Monolith | Modular |
+|--------|----------|---------|
+| **HTML** | All markup in one file | Component references in `src/components/` |
+| **CSS** | One giant `<style>` block | Split into `reset`, `variables`, `components`, `style` |
+| **JS** | One giant `<script>` block | ES modules in `src/js/` |
+| **State** | Global `let db`, `const state` | Exported modules |
+| **Inline handlers** | `onclick="fn()"` | Event listeners + global exposure for legacy |
+| **Tests** | None | Node test runner in `tests/` |
+| **API layer** | Direct `db` access | `api.js` abstraction |
+
+> **Note:** Inline `onclick` handlers are preserved (with global `window.*` exposure) to maintain compatibility with dynamically generated HTML strings. A future refactor could replace these with full event delegation.
+
+Would you like me to also generate a **Vite/Webpack build config**, or convert this to a **React/Vue** version?

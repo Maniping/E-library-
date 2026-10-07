@@ -1,0 +1,27 @@
+{
+	"name": "uv-arc-reservation-system",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"frontend": "serve . -l 3000",
+		"backend": "npm --prefix my-backend run dev",
+		"dev": "concurrently -k \"npm:backend\" \"npm:frontend\"",
+		"start": "npm run dev",
+		"test": "node --test"
+	},
+	"devDependencies": {
+		"concurrently": "^9.2.0",
+		"serve": "^14.2.0"
+	},
+	"description": "A web-based PC reservation system for the **University of the Visayas · Academic Resource Center (ARC)**.",
+	"main": "index.js",
+	"directories": {
+		"test": "tests"
+	},
+	"dependencies": {},
+
+	"keywords": [],
+	"author": "",
+	"license": "ISC"
+}

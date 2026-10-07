@@ -1,0 +1,17 @@
+{
+  "name": "UV ARC Reservation System",
+  "short_name": "UV ARC",
+  "description": "PC Reservation System for University of the Visayas Academic Resource Center",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a5c36",
+  "theme_color": "#0a5c36",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
