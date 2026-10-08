@@ -316,7 +316,7 @@ export function openCreateAccountScanner() {
   setTimeout(() => startScanner(), 120);
 }
 
-export function proceedChoice() {
+export async function proceedChoice() {
   const action = state.chosenAction;
   if (!action) return;
 
@@ -356,7 +356,7 @@ export function proceedChoice() {
       });
       r.checkedIn = true;
       try {
-        persist();
+        await persist();
       } catch (error) {
         db.sessions.pop();
         db.nextSessionId = previousNextSessionId;
@@ -378,7 +378,7 @@ export function proceedChoice() {
         checkIn: nowTime(), checkOut: null, durationMin: 0, date: todayISO(),
       });
       try {
-        persist();
+        await persist();
       } catch (error) {
         db.sessions.pop();
         db.nextSessionId = previousNextSessionId;
@@ -405,7 +405,7 @@ export function proceedChoice() {
     existing.checkOut = t;
     existing.durationMin = minutesBetween(existing.checkIn, t);
     try {
-      persist();
+      await persist();
     } catch (error) {
       Object.assign(existing, previous);
       showToast(error.message || 'Could not save the check-out. Please try again.', 'error');

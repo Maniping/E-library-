@@ -1,4 +1,5 @@
 import { hydrateDB, checkBackendAvailability, db, persist } from './utils/storage.js';
+import { api } from '../css/api.js';
 import { state } from './utils/state.js';
 import { $, esc, showToast } from './utils/dom.js';
 import { applyTheme, toggleTheme, initTheme } from './utils/theme.js';
@@ -30,7 +31,7 @@ Object.assign(window, {
   renderApprovals, renderAllReservations, renderAccounts, renderCreateAccount,
   renderManageRooms, renderReports,
   // Actions
-  quickLogin, handleLogin, handleLogout, updateHeader,
+  handleLogin, handleLogout, updateHeader,
   toggleSidebar, closeSidebar, openUserSheet, openQuickActions,
   closeBottomSheet, openBottomSheet,
   quickCheckout, quickReserveRoom, saveDraft, clearDraft, updateRoomInfo,
@@ -51,9 +52,9 @@ Object.assign(window, {
   $,
 });
 
-function persistWithFeedback() {
+async function persistWithFeedback() {
   try {
-    persist();
+    await persist();
     return true;
   } catch (error) {
     showToast(error.message || 'Could not save your changes. Please try again.', 'error');
@@ -338,14 +339,14 @@ function renderDashboard() {
   `;
 }
 
-function quickCheckout(sessionId) {
+async function quickCheckout(sessionId) {
   const s = db.sessions.find(x => x.id === sessionId);
   if (!s) return;
   const previous = { checkOut: s.checkOut, durationMin: s.durationMin };
   const t = nowTime();
   s.checkOut = t;
   s.durationMin = minutesBetween(s.checkIn, t);
-  if (!persistWithFeedback()) {
+  if (!await persistWithFeedback()) {
     Object.assign(s, previous);
     return;
   }
@@ -622,7 +623,7 @@ function updateRoomInfo() {
   $('resParticipants').value = r.capacity;
 }
 
-function saveDraft() {
+async function saveDraft() {
   if (!state.currentUser) return;
   const previous = db.draft;
   db.draft = {
@@ -635,12 +636,12 @@ function saveDraft() {
     members: $('resMembers')?.value || '',
     savedAt: new Date().toISOString(),
   };
-  if (!persistWithFeedback()) db.draft = previous;
+  if (!await persistWithFeedback()) db.draft = previous;
 }
-function clearDraft() {
+async function clearDraft() {
   const previous = db.draft;
   db.draft = null;
-  if (!persistWithFeedback()) db.draft = previous;
+  if (!await persistWithFeedback()) db.draft = previous;
 }
 
 async function submitReservation(e) {
@@ -676,43 +677,36 @@ async function submitReservation(e) {
   state.submitting = true;
   setFormSubmitting(button, true, 'Saving reservation...');
   await new Promise(resolve => setTimeout(resolve, 0));
-  const previousNextResId = db.nextResId;
   const previousDraft = db.draft;
   let reservationAdded = false;
   try {
-    const newId = `RES-2025-${String(db.nextResId++).padStart(3, '0')}`;
     const newReservation = {
-      id: newId,
       roomId: room.id, roomName: room.name, roomType: room.type,
       filedBy: u.name, filedById: u.id,
       dept: u.dept || u.section || '—',
       dateFiled: todayISO(), useDate: date, useTime: time,
       participants, contact, purpose, members,
       status: 'pending', remarks: '', checkedIn: false,
-      qrData: generateResQrData(newId),
     };
-    db.reservations.push(newReservation);
+    const savedReservation = await api.createReservation(newReservation);
+    db.reservations.push(savedReservation);
     reservationAdded = true;
+    db.nextResId = Math.max(db.nextResId, Number(savedReservation.id.split('-').pop()) + 1);
     db.draft = null;
-    if (!persistWithFeedback()) {
-      db.reservations.pop();
-      reservationAdded = false;
-      db.nextResId = previousNextResId;
-      db.draft = previousDraft;
-      return;
+    try { await persist({ sync: false }); } catch (error) {
+      showToast(error.message || 'Reservation saved, but this device could not cache it.', 'error');
     }
 
-    $('successResId').textContent = newId;
+    $('successResId').textContent = savedReservation.id;
     $('successViewBtn').onclick = () => {
       closeSuccess();
       navigateTo('myreservations');
-      setTimeout(() => viewReservation(newId), 120);
+      setTimeout(() => viewReservation(savedReservation.id), 120);
     };
     $('successOverlay').classList.remove('hidden');
     showToast('✅ Reservation saved!', 'success');
   } catch (error) {
     if (reservationAdded) db.reservations.pop();
-    db.nextResId = previousNextResId;
     db.draft = previousDraft;
     showToast(error.message || 'Could not submit your reservation. Please try again.', 'error');
   } finally {
@@ -921,16 +915,15 @@ function renderCreateAccount() {
           <select class="form-control" id="newRole">
             <option value="student">Student</option>
             <option value="faculty">Faculty</option>
-            <option value="admin">Admin</option>
           </select>
         </div>
         <div class="form-group"><label>Full Name</label><input type="text" class="form-control" id="newName" required></div>
         <div class="form-group"><label>Generated ID Number</label><input type="text" class="form-control" id="newId" value="${generateAccountId('student')}" readonly></div>
-        <div class="form-group"><label>Email</label><input type="email" class="form-control" id="newEmail"></div>
+        <div class="form-group"><label>Email</label><input type="email" class="form-control" id="newEmail" required></div>
         <div class="form-group">
           <label>Password</label>
           <div class="pw-input-wrap">
-            <input type="text" class="form-control" id="newPassword" value="password123" required>
+            <input type="password" class="form-control" id="newPassword" required minlength="8" autocomplete="new-password">
             <button type="button" class="toggle-pw" data-toggle-pw="newPassword"><i class="fas fa-eye"></i></button>
           </div>
         </div>
@@ -964,26 +957,18 @@ async function createAccount(e) {
   state.submitting = true;
   setFormSubmitting(button, true, 'Creating account...');
   await new Promise(resolve => setTimeout(resolve, 0));
-  const hadRegistryEntry = Object.prototype.hasOwnProperty.call(db.registry, id);
-  let userAdded = false;
   try {
-    const newUser = { id, password, name, role, email, qrData: generateQrData(id, role), bio: '', image: null };
-    if (role === 'student') newUser.section = $('newSection').value.trim();
-    if (role === 'faculty') newUser.dept = $('newDept').value.trim();
+    const newUser = await api.createUser({
+      id, password, name, role, email,
+      section: role === 'student' ? $('newSection').value.trim() : '',
+      dept: role === 'faculty' ? $('newDept').value.trim() : '',
+    });
     db.users.push(newUser);
-    userAdded = true;
-    if (!hadRegistryEntry) db.registry[id] = { name, section: newUser.section, dept: newUser.dept, email };
-    if (!persistWithFeedback()) {
-      db.users.pop();
-      userAdded = false;
-      if (!hadRegistryEntry) delete db.registry[id];
-      return;
-    }
+    db.registry[id] = { name, section: newUser.section, dept: newUser.dept, email };
+    await persist({ sync: false });
     showToast(`✅ ${role} account created`, 'success');
     navigateTo('accounts');
   } catch (error) {
-    if (userAdded) db.users.pop();
-    if (!hadRegistryEntry) delete db.registry[id];
     showToast(error.message || 'Could not create the account. Please try again.', 'error');
   } finally {
     state.submitting = false;
@@ -1014,12 +999,12 @@ function renderManageRooms() {
   return html;
 }
 
-function changeRoomStatus(id, status) {
+async function changeRoomStatus(id, status) {
   const r = db.rooms.find(x => x.id === id);
   if (!r) return;
   const previousStatus = r.status;
   r.status = status;
-  if (!persistWithFeedback()) {
+  if (!await persistWithFeedback()) {
     r.status = previousStatus;
     renderContent();
     return;
@@ -1124,20 +1109,20 @@ function closeReservationModal() {
   state.currentReservationId = null;
 }
 
-function approveReservation(id) {
+async function approveReservation(id) {
   const r = db.reservations.find(x => x.id === id);
   if (!r) return;
   const previous = { status: r.status, remarks: r.remarks };
   r.status = 'confirmed'; r.remarks = 'Approved';
-  if (!persistWithFeedback()) { Object.assign(r, previous); return; }
+  if (!await persistWithFeedback()) { Object.assign(r, previous); return; }
   showToast(`✅ ${id} approved`, 'success'); renderContent();
 }
-function rejectReservation(id) {
+async function rejectReservation(id) {
   const r = db.reservations.find(x => x.id === id);
   if (!r) return;
   const previous = { status: r.status, remarks: r.remarks };
   r.status = 'cancelled'; r.remarks = 'Rejected';
-  if (!persistWithFeedback()) { Object.assign(r, previous); return; }
+  if (!await persistWithFeedback()) { Object.assign(r, previous); return; }
   showToast(`${id} rejected`, 'error'); renderContent();
 }
 
@@ -1280,7 +1265,7 @@ function previewImage(e) {
   r.onload = ev => { state.pendingImageData = ev.target.result; updateEditPreview(ev.target.result, $('editName').value); };
   r.readAsDataURL(f);
 }
-function saveProfile(e) {
+async function saveProfile(e) {
   e.preventDefault();
   const u = userById(state.editingUserId);
   if (!u) return;
@@ -1290,16 +1275,19 @@ function saveProfile(e) {
     $('editName').focus();
     return;
   }
-  const previous = { name: u.name, email: u.email, bio: u.bio, section: u.section, dept: u.dept, image: u.image };
-  u.name = name;
-  u.email = $('editEmail').value.trim();
-  u.bio = $('editBio').value.trim();
-  if (u.role === 'student') u.section = $('editSection').value.trim();
-  if (u.role === 'faculty') u.dept = $('editDept').value.trim();
-  if (state.pendingImageData !== undefined) u.image = state.pendingImageData;
-  if (!persistWithFeedback()) {
-    Object.assign(u, previous);
-    updateHeader();
+  const updates = {
+    name,
+    bio: $('editBio').value.trim(),
+  };
+  if (u.role === 'student') updates.section = $('editSection').value.trim();
+  if (u.role === 'faculty') updates.dept = $('editDept').value.trim();
+  if (state.pendingImageData !== undefined) updates.image = state.pendingImageData;
+  try {
+    const updated = await api.updateUser(u.id, updates);
+    Object.assign(u, updated);
+    await persist({ sync: false });
+  } catch (error) {
+    showToast(error.message || 'Could not update your profile.', 'error');
     return;
   }
   updateHeader();
@@ -1349,18 +1337,17 @@ function checkPasswordMatch() {
   if (a === b) { h.textContent = '✓ Match'; h.style.color = '#16a34a'; }
   else { h.textContent = '✗ Do not match'; h.style.color = '#dc2626'; }
 }
-function submitChangePassword(e) {
+async function submitChangePassword(e) {
   e.preventDefault();
   const u = state.currentUser;
   const cur = $('currentPw').value, np = $('newPw').value, cp = $('confirmPw').value;
-  if (cur !== u.password) { showToast('Current password incorrect', 'error'); return; }
-  if (np.length < 6) { showToast('Password must be 6+ characters', 'error'); return; }
+  if (np.length < 8) { showToast('Password must be at least 8 characters', 'error'); return; }
   if (np === cur) { showToast('New password must be different', 'error'); return; }
   if (np !== cp) { showToast('Passwords do not match', 'error'); return; }
-  const previousPassword = u.password;
-  u.password = np;
-  if (!persistWithFeedback()) {
-    u.password = previousPassword;
+  try {
+    await api.changePassword(np, cur);
+  } catch (error) {
+    showToast(error.message || 'Could not change your password.', 'error');
     return;
   }
   closeChangePassword();
@@ -1370,39 +1357,50 @@ function submitChangePassword(e) {
 /* ============================================================
    LOGIN / LOGOUT / HEADER
    ============================================================ */
-function quickLogin(id) {
-  $('loginId').value = id;
-  $('loginPassword').value = 'password123';
-  $('loginForm').dispatchEvent(new Event('submit', { cancelable: true }));
-}
-function handleLogin(e) {
+async function handleLogin(e) {
   e.preventDefault();
+  if (state.submitting) return;
   const id = $('loginId').value.trim();
   const pw = $('loginPassword').value;
   const err = $('loginError');
-  const u = db.users.find(x => normalizeId(x.id) === normalizeId(id) && x.password === pw);
-  if (!u) { err.textContent = 'Invalid ID number or password.'; return; }
-  try { localStorage.setItem('uv_arc_last_id', id); } catch (e) {}
+  const button = $('loginForm').querySelector('button[type="submit"]');
+  state.submitting = true;
+  setFormSubmitting(button, true, 'Signing in...');
   err.textContent = '';
-  state.currentUser = u;
-  state.currentRole = u.role;
-  $('loginScreen').classList.add('hidden');
-  $('appContainer').classList.remove('hidden');
-  if (window.innerWidth < 1024) {
-    $('bottomNav').classList.remove('hidden');
-    $('fab').classList.remove('hidden');
+  try {
+    const profile = await api.login(id, pw);
+    await hydrateDB(sessionStorage.getItem('uv_arc_access_token'));
+    const user = db.users.find(item => item.id === profile.id) || profile;
+    if (!db.users.some(item => item.id === user.id)) db.users.push(user);
+    state.currentUser = user;
+    state.currentRole = user.role;
+    try { localStorage.setItem('uv_arc_last_id', id); } catch {}
+    $('loginScreen').classList.add('hidden');
+    $('appContainer').classList.remove('hidden');
+    if (window.innerWidth < 1024) {
+      $('bottomNav').classList.remove('hidden');
+      $('fab').classList.remove('hidden');
+    }
+    updateHeader();
+    state.currentPage = 'dashboard';
+    renderSidebar();
+    renderContent();
+    showToast(`Welcome back, ${user.name.split(' ')[0]}!`, 'success');
+  } catch (error) {
+    api.logout();
+    err.textContent = error.message || 'Something went wrong signing in. Please try again.';
+  } finally {
+    state.submitting = false;
+    setFormSubmitting(button, false);
   }
-  updateHeader();
-  state.currentPage = 'dashboard';
-  renderSidebar();
-  renderContent();
-  showToast(`Welcome back, ${u.name.split(' ')[0]}!`, 'success');
 }
 function handleLogout() {
   stopScanner();
   closeSidebar();
   closeBottomSheet();
   state.currentUser = null;
+  state.currentRole = null;
+  api.logout();
   $('appContainer').classList.add('hidden');
   $('bottomNav').classList.add('hidden');
   $('fab').classList.add('hidden');
@@ -1494,9 +1492,6 @@ function openUserSheet() {
    ============================================================ */
 function wireEvents() {
   $('loginForm')?.addEventListener('submit', handleLogin);
-  document.querySelectorAll('[data-quick-login]').forEach(btn => {
-    btn.addEventListener('click', () => quickLogin(btn.dataset.quickLogin));
-  });
   document.querySelectorAll('[data-toggle-pw]').forEach(btn => {
     btn.addEventListener('click', () => togglePw(btn.dataset.togglePw, btn));
   });
@@ -1597,12 +1592,9 @@ async function init() {
   await hydrateDB();
   initTheme();
   wireEvents();
-
-  // Merge existing registry from users
-  db.users.forEach(u => {
-    if (!db.registry[u.id]) db.registry[u.id] = { name: u.name, section: u.section, dept: u.dept, email: u.email };
+  window.addEventListener('uv:sync-error', event => {
+    showToast(event.detail?.message || 'Your changes could not be synced with the server.', 'error');
   });
-  persistWithFeedback();
 
   // Restore last ID
   try {
@@ -1615,7 +1607,7 @@ async function init() {
     $('splashScreen').classList.add('hidden');
     $('loginScreen').classList.remove('hidden');
     if (!await checkBackendAvailability()) {
-      showToast('Something went wrong connecting to the backend. Your changes will be saved only in this browser.', 'error');
+      showToast('The library service is unavailable. Sign-in and shared data require a server connection.', 'error');
     }
   }, 2200);
 }

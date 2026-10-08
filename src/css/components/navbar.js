@@ -1,14 +1,11 @@
-import { $, showToast } from '../utils/dom.js';
-import { db, persist } from '../utils/storage.js';
-import { state } from '../utils/state.js';
-import { normalizeId } from '../utils/format.js';
+import { $, showToast } from '../../js/utils/dom.js';
+import { db } from '../../js/utils/storage.js';
+import { state } from '../../js/utils/state.js';
+import { hydrateDB } from '../../js/utils/storage.js';
+import { api } from '../api.js';
 
 export function setupLoginHandlers() {
   $('loginForm')?.addEventListener('submit', handleLogin);
-
-  document.querySelectorAll('[data-quick-login]').forEach(btn => {
-    btn.addEventListener('click', () => quickLogin(btn.dataset.quickLogin));
-  });
 
   $('mobileMenuBtn')?.addEventListener('click', toggleSidebar);
   $('sidebarBackdrop')?.addEventListener('click', toggleSidebar);
@@ -17,20 +14,25 @@ export function setupLoginHandlers() {
   $('fab')?.addEventListener('click', openQuickActions);
 }
 
-function handleLogin(e) {
+async function handleLogin(e) {
   e.preventDefault();
   const id = $('loginId').value.trim();
   const pw = $('loginPassword').value;
   const err = $('loginError');
-  const u = db.users.find(x => normalizeId(x.id) === normalizeId(id) && x.password === pw);
-  if (!u) {
-    err.textContent = 'Invalid ID number or password.';
+  let user;
+  try {
+    user = await api.login(id, pw);
+    await hydrateDB(sessionStorage.getItem('uv_arc_access_token'));
+    user = db.users.find(item => item.id === user.id) || user;
+  } catch (error) {
+    api.logout();
+    err.textContent = error.message || 'Something went wrong signing in. Please try again.';
     return;
   }
   try { localStorage.setItem('uv_arc_last_id', id); } catch (e) {}
   err.textContent = '';
-  state.currentUser = u;
-  state.currentRole = u.role;
+  state.currentUser = user;
+  state.currentRole = user.role;
   $('loginScreen').classList.add('hidden');
   $('appContainer').classList.remove('hidden');
   if (window.innerWidth < 1024) {
@@ -41,13 +43,7 @@ function handleLogin(e) {
   state.currentPage = 'dashboard';
   renderSidebar();
   renderContent();
-  showToast(`Welcome back, ${u.name.split(' ')[0]}!`, 'success');
-}
-
-function quickLogin(id) {
-  $('loginId').value = id;
-  $('loginPassword').value = 'password123';
-  $('loginForm').dispatchEvent(new Event('submit', { cancelable: true }));
+  showToast(`Welcome back, ${user.name.split(' ')[0]}!`, 'success');
 }
 
 function updateHeader() {

@@ -1,9 +1,15 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const { pool, query } = require("./db");
 
+const authRouter = require("./routes/auth");
+const dataRouter = require("./routes/data");
+const reservationsRouter = require("./routes/reservations");
 const usersRouter = require("./routes/users");
-const { getStateSnapshot } = require("./store");
+const { authenticate } = require("./middleware/authenticate");
+const { updatePassword } = require("./supabase-auth");
+const { createInitialState } = require("./store");
 
 const app = express();
 const port = Number(process.env.PORT) || 5000;
@@ -26,14 +32,35 @@ app.get("/", (req, res) => {
 });
 
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", uptime: process.uptime() });
+  if (!pool) return res.status(503).json({ status: "not_configured", uptime: process.uptime() });
+  query("SELECT 1")
+    .then(() => res.json({ status: "ok", uptime: process.uptime() }))
+    .catch(() => res.status(503).json({ status: "database_unavailable", uptime: process.uptime() }));
 });
 
-app.get("/api/data", (req, res) => {
-  res.json(getStateSnapshot());
+app.get("/api/bootstrap", (req, res) => {
+  const { rooms } = createInitialState();
+  res.json({ rooms });
 });
 
+app.use("/api/auth", authRouter);
+app.use("/api/data", dataRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/reservations", reservationsRouter);
+
+app.put("/api/auth/password", authenticate, async (req, res, next) => {
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : "";
+  if (!currentPassword) return res.status(400).json({ error: "Enter your current password." });
+  if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+  try {
+    const authorization = req.get("authorization");
+    await updatePassword(authorization.replace(/^Bearer\s+/i, ""), req.profile.email, currentPassword, password);
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });

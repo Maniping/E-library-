@@ -1,16 +1,17 @@
-import { hydrateDB, db, persist } from './utils/storage.js';
-import { state } from './utils/state.js';
-import { $, esc, showToast } from './utils/dom.js';
-import { applyTheme, toggleTheme, initTheme } from './utils/theme.js';
+import { hydrateDB, db, persist } from './storage.js';
+import { state } from './state.js';
+import { $, esc, showToast } from './dom.js';
+import { applyTheme, toggleTheme, initTheme } from './theme.js';
 import {
   initials, formatDate, formatTime, nowTime, todayISO, tomorrowISO,
   normalizeId, minutesBetween, formatDuration,
-} from './utils/format.js';
-import { generateQrData, generateResQrData, renderQrCode } from './utils/qr.js';
+} from './format.js';
+import { generateQrData, generateResQrData, renderQrCode } from './qr.js';
 import {
   startScanner, stopScanner, switchCamera, closeIdCapture,
   backToScan, proceedChoice, openCheckinScanner,
-} from './utils/scanner.js';
+} from './scanner.js';
+import { api } from '../../css/api.js';
 
 /* ==== EXPOSE GLOBALS FOR INLINE HANDLERS ==== */
 Object.assign(window, {
@@ -18,7 +19,7 @@ Object.assign(window, {
   tomorrowISO, normalizeId, minutesBetween, formatDuration,
   generateQrData, generateResQrData, toggleTheme,
   navigateTo, renderSidebar, renderContent,
-  quickLogin, handleLogin, handleLogout, updateHeader,
+  handleLogin, handleLogout, updateHeader,
   toggleSidebar, closeSidebar, openUserSheet, openQuickActions,
   closeBottomSheet, openBottomSheet, quickCheckout, quickReserveRoom,
   saveDraft, clearDraft, updateRoomInfo, submitReservation, closeSuccess,
@@ -777,7 +778,7 @@ function renderCreateAccount() {
         <div class="form-group">
           <label>Password</label>
           <div class="pw-input-wrap">
-            <input type="text" class="form-control" id="newPassword" value="password123" required>
+            <input type="password" class="form-control" id="newPassword" required minlength="8" autocomplete="new-password">
             <button type="button" class="toggle-pw" data-toggle-pw="newPassword"><i class="fas fa-eye"></i></button>
           </div>
         </div>
@@ -1102,37 +1103,43 @@ function checkPasswordMatch() {
   if (a === b) { h.textContent = '✓ Match'; h.style.color = '#16a34a'; }
   else { h.textContent = '✗ Do not match'; h.style.color = '#dc2626'; }
 }
-function submitChangePassword(e) {
+async function submitChangePassword(e) {
   e.preventDefault();
   const u = state.currentUser;
   const cur = $('currentPw').value, np = $('newPw').value, cp = $('confirmPw').value;
-  if (cur !== u.password) { showToast('Current password incorrect', 'error'); return; }
-  if (np.length < 6) { showToast('Password must be 6+ characters', 'error'); return; }
+  if (np.length < 8) { showToast('Password must be at least 8 characters', 'error'); return; }
   if (np === cur) { showToast('New password must be different', 'error'); return; }
   if (np !== cp) { showToast('Passwords do not match', 'error'); return; }
-  u.password = np;
-  persist();
+  try {
+    await api.changePassword(np, cur);
+  } catch (error) {
+    showToast(error.message || 'Could not change your password.', 'error');
+    return;
+  }
   closeChangePassword();
   showToast('✅ Password changed', 'success');
 }
 
 /* ==== LOGIN / LOGOUT / HEADER ==== */
-function quickLogin(id) {
-  $('loginId').value = id;
-  $('loginPassword').value = 'password123';
-  $('loginForm').dispatchEvent(new Event('submit', { cancelable: true }));
-}
-function handleLogin(e) {
+async function handleLogin(e) {
   e.preventDefault();
   const id = $('loginId').value.trim();
   const pw = $('loginPassword').value;
   const err = $('loginError');
-  const u = db.users.find(x => normalizeId(x.id) === normalizeId(id) && x.password === pw);
-  if (!u) { err.textContent = 'Invalid ID number or password.'; return; }
+  let user;
+  try {
+    user = await api.login(id, pw);
+    await hydrateDB(sessionStorage.getItem('uv_arc_access_token'));
+    user = db.users.find(item => item.id === user.id) || user;
+  } catch (error) {
+    api.logout();
+    err.textContent = error.message || 'Something went wrong signing in. Please try again.';
+    return;
+  }
   try { localStorage.setItem('uv_arc_last_id', id); } catch (e) {}
   err.textContent = '';
-  state.currentUser = u;
-  state.currentRole = u.role;
+  state.currentUser = user;
+  state.currentRole = user.role;
   $('loginScreen').classList.add('hidden');
   $('appContainer').classList.remove('hidden');
   if (window.innerWidth < 1024) {
@@ -1143,10 +1150,11 @@ function handleLogin(e) {
   state.currentPage = 'dashboard';
   renderSidebar();
   renderContent();
-  showToast(`Welcome back, ${u.name.split(' ')[0]}!`, 'success');
+  showToast(`Welcome back, ${user.name.split(' ')[0]}!`, 'success');
 }
 function handleLogout() {
   stopScanner();
+  api.logout();
   closeSidebar();
   closeBottomSheet();
   state.currentUser = null;
@@ -1234,9 +1242,6 @@ function openUserSheet() {
 /* ==== EVENT WIRING ==== */
 function wireEvents() {
   $('loginForm')?.addEventListener('submit', handleLogin);
-  document.querySelectorAll('[data-quick-login]').forEach(btn => {
-    btn.addEventListener('click', () => quickLogin(btn.dataset.quickLogin));
-  });
   document.querySelectorAll('[data-toggle-pw]').forEach(btn => {
     btn.addEventListener('click', () => togglePw(btn.dataset.togglePw, btn));
   });

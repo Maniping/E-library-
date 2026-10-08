@@ -1,11 +1,15 @@
 /**
  * API abstraction layer.
  * Prefer the live backend when it is available and gracefully fall back
- * to the browser's local storage implementation for offline/demo use.
+ * to the browser's local storage cache for offline access.
  */
-import { db, persist } from './utils/storage.js';
+import { API_BASE, db, persist } from '../js/utils/storage.js';
 
-const API_BASE = 'http://localhost:5000';
+const ACCESS_TOKEN_KEY = 'uv_arc_access_token';
+
+function accessToken() {
+  return sessionStorage.getItem(ACCESS_TOKEN_KEY);
+}
 
 async function requestJson(path, { method = 'GET', body } = {}) {
   const headers = {
@@ -14,9 +18,11 @@ async function requestJson(path, { method = 'GET', body } = {}) {
 
   const response = await fetch(`${API_BASE}${path}`, {
     method,
-    headers,
     body: body ? JSON.stringify(body) : undefined,
-    credentials: 'include',
+    headers: {
+      ...headers,
+      ...(accessToken() ? { Authorization: `Bearer ${accessToken()}` } : {}),
+    },
   });
 
   if (!response.ok) {
@@ -55,6 +61,36 @@ function localFallback(method, entity, id, payload) {
 export const api = {
   baseUrl: API_BASE,
 
+  async login(id, password) {
+    const result = await requestJson('/api/auth/login', {
+      method: 'POST',
+      body: { id, password },
+    });
+    sessionStorage.setItem(ACCESS_TOKEN_KEY, result.access_token);
+    sessionStorage.setItem('uv_arc_user_id', result.profile.student_id);
+    return {
+      id: result.profile.student_id,
+      authUserId: result.profile.id,
+      name: result.profile.full_name,
+      role: result.profile.role.toLowerCase(),
+      email: result.profile.email,
+      section: result.profile.section || '',
+      dept: result.profile.dept || '',
+      bio: result.profile.bio || '',
+      image: result.profile.image || null,
+      qrData: result.profile.qr_data || '',
+    };
+  },
+
+  logout() {
+    sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+    sessionStorage.removeItem('uv_arc_user_id');
+  },
+
+  async updatePassword(password) {
+    return requestJson('/api/auth/password', { method: 'PUT', body: { password } });
+  },
+
   async healthCheck() {
     try {
       const response = await fetch(`${API_BASE}/health`, { method: 'GET' });
@@ -88,15 +124,15 @@ export const api = {
   },
 
   async createUser(user) {
-    try {
-      const created = await requestJson('/api/users', { method: 'POST', body: user });
-      if (created) return created;
-    } catch (error) {
-      if (error.status) throw error;
-    }
+    return requestJson('/api/users', { method: 'POST', body: user });
+  },
 
-    const payload = { ...user, id: user.id || `USER-${Date.now()}` };
-    return localFallback('create', 'users', null, payload);
+  async updateUser(id, updates) {
+    return requestJson(`/api/users/${encodeURIComponent(id)}`, { method: 'PUT', body: updates });
+  },
+
+  async changePassword(password, currentPassword) {
+    return requestJson('/api/auth/password', { method: 'PUT', body: { password, currentPassword } });
   },
 
   async getReservations() {
@@ -112,10 +148,7 @@ export const api = {
   },
 
   async createReservation(reservation) {
-    const payload = { ...reservation };
-    db.reservations.push(payload);
-    persist();
-    return payload;
+    return requestJson('/api/reservations', { method: 'POST', body: reservation });
   },
 
   async updateReservation(id, updates) {

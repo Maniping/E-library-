@@ -1,7 +1,6 @@
 import { test } from 'node:test';
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 
-// Mock localStorage for Node environment
 global.localStorage = {
   _data: {},
   getItem(key) { return this._data[key] || null; },
@@ -9,89 +8,82 @@ global.localStorage = {
   removeItem(key) { delete this._data[key]; },
   clear() { this._data = {}; },
 };
+global.sessionStorage = {
+  getItem() { return null; },
+};
 global.window = {};
 
-test('DB load/save roundtrip', async () => {
+test('new library data starts without demo users or reservations', async () => {
+  localStorage.clear();
   const storage = await import('../src/js/utils/storage.js');
   storage.loadDB();
-  const db = storage.db;
-  db.users.push({ id: 'TEST-001', password: 'test', name: 'Test User', role: 'student' });
-  storage.persist();
-  const raw = localStorage.getItem('uv_arc_db_v13');
-  assert.ok(raw);
-  const parsed = JSON.parse(raw);
-  assert.ok(parsed.users.some(u => u.id === 'TEST-001'));
+
+  assert.deepEqual(storage.db.users, []);
+  assert.deepEqual(storage.db.reservations, []);
+  assert.equal(storage.db.rooms.length, 20);
 });
 
-test('DB falls back to demo accounts when stored data is from an unrelated backend', async () => {
+test('local cache round-trips profiles without password fields', async () => {
+  localStorage.clear();
   const storage = await import('../src/js/utils/storage.js');
-  localStorage.setItem('uv_arc_db_v13', JSON.stringify({
-    users: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }],
-    rooms: [],
-    reservations: [],
-    registry: {},
-    checkins: [],
-    sessions: [],
-    nextResId: 2,
-    nextSessionId: 1,
-    draft: null,
+  storage.loadDB();
+  storage.db.users.push({ id: 'EMP-01', name: 'Test User', role: 'admin' });
+  await storage.persist({ sync: false });
+
+  const parsed = JSON.parse(localStorage.getItem('uv_arc_db_v14'));
+  assert.ok(parsed.users.some(user => user.id === 'EMP-01'));
+  assert.equal('password' in parsed.users[0], false);
+});
+
+test('unauthenticated startup ignores cached data from an earlier session', async () => {
+  localStorage.clear();
+  const storage = await import('../src/js/utils/storage.js');
+  localStorage.setItem('uv_arc_db_v14', JSON.stringify({
+    ...storage.defaultDB,
+    users: [{ id: 'PRIVATE', name: 'Private User', role: 'admin' }],
+  }));
+
+  await storage.hydrateDB();
+
+  assert.deepEqual(storage.db.users, []);
+});
+
+test('hydrated state does not mutate the default snapshot', async () => {
+  localStorage.clear();
+  const storage = await import('../src/js/utils/storage.js');
+
+  await storage.hydrateDB();
+  storage.db.rooms[0].name = 'Changed PC';
+  storage.db.users.push({ id: 'TEMP', name: 'Temporary User', role: 'admin' });
+
+  assert.equal(storage.defaultDB.rooms[0].name, 'PC 1');
+  assert.deepEqual(storage.defaultDB.users, []);
+});
+
+test('malformed snapshots fall back to empty live data', async () => {
+  localStorage.clear();
+  const storage = await import('../src/js/utils/storage.js');
+  localStorage.clear();
+  localStorage.setItem('uv_arc_db_v14', JSON.stringify({
+    ...storage.defaultDB,
+    users: [null],
   }));
 
   storage.loadDB();
 
-  assert.ok(storage.db.users.some(u => u.id === '2023-00123'));
-  assert.ok(storage.db.users.some(u => u.id === 'F-1024'));
-  assert.ok(storage.db.users.some(u => u.id === 'A-001'));
+  assert.deepEqual(storage.db.users, []);
+  assert.deepEqual(storage.db.reservations, []);
 });
 
-test('DB keeps a valid local snapshot instead of replacing it with backend data', async () => {
-  const storage = await import('../src/js/utils/storage.js');
-  const originalFetch = global.fetch;
-  let fetched = false;
-
+test('valid snapshots with optional fields omitted are normalized', async () => {
   localStorage.clear();
-  storage.loadDB();
-  storage.db.reservations.push({
-    ...storage.defaultDB.reservations[0],
-    id: 'LOCAL-TEST',
-    filedById: '2023-00123',
-  });
-  storage.persist();
-  global.fetch = async () => {
-    fetched = true;
-    throw new Error('Backend should not be queried when local data exists');
-  };
-
-  try {
-    await storage.hydrateDB();
-    assert.equal(fetched, false);
-    assert.ok(storage.db.reservations.some(r => r.id === 'LOCAL-TEST'));
-  } finally {
-    global.fetch = originalFetch;
-  }
-});
-
-test('DB rejects snapshots containing invalid records and restores demo data', async () => {
-  const storage = await import('../src/js/utils/storage.js');
-  localStorage.clear();
-  const snapshot = JSON.parse(JSON.stringify(storage.defaultDB));
-  snapshot.users.push(null);
-  localStorage.setItem('uv_arc_db_v13', JSON.stringify(snapshot));
-
-  storage.loadDB();
-
-  assert.ok(storage.db.users.every(user => user && typeof user.id === 'string'));
-  assert.ok(storage.db.users.some(user => user.id === '2023-00123'));
-});
-
-test('DB normalizes older valid snapshots with omitted optional fields', async () => {
   const storage = await import('../src/js/utils/storage.js');
   localStorage.clear();
   const snapshot = JSON.parse(JSON.stringify(storage.defaultDB));
   delete snapshot.sessions;
   delete snapshot.checkins;
   delete snapshot.nextSessionId;
-  localStorage.setItem('uv_arc_db_v13', JSON.stringify(snapshot));
+  localStorage.setItem('uv_arc_db_v14', JSON.stringify(snapshot));
 
   storage.loadDB();
 
@@ -100,14 +92,15 @@ test('DB normalizes older valid snapshots with omitted optional fields', async (
   assert.equal(storage.db.nextSessionId, 1);
 });
 
-test('persist reports local storage failures instead of silently succeeding', async () => {
+test('persist reports local storage failures', async () => {
+  localStorage.clear();
   const storage = await import('../src/js/utils/storage.js');
   storage.loadDB();
   const originalSetItem = localStorage.setItem;
   localStorage.setItem = () => { throw new Error('Quota exceeded'); };
 
   try {
-    assert.throws(() => storage.persist(), /Could not save your changes/);
+    await assert.rejects(storage.persist(), /Could not save your changes/);
   } finally {
     localStorage.setItem = originalSetItem;
   }
