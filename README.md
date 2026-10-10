@@ -53,8 +53,9 @@ This starts:
 4. Keep `.env` and the service-role secret out of source control and frontend configuration.
    On Render, add all four values as backend Environment Variables. Set the service root
    directory to `my-backend`, build command to `npm install`, and start command to `npm start`.
-   Set `NODE_ENV=production` and `FRONTEND_ORIGINS` to the exact comma-separated HTTPS origins
-   serving the app.
+   Set `NODE_ENV=production` and `FRONTEND_ORIGINS` to any additional exact comma-separated
+   HTTPS origins serving the app. The `elibuv.netlify.app` and `elibuvtoledo.netlify.app`
+   Netlify sites are already allowed.
 5. Deploy the frontend to Netlify using the included [`netlify.toml`](./netlify.toml).
    It builds with `npm run build:netlify` and publishes only `dist` (the frontend files),
    excluding backend code and environment files. [`api-config.js`](./api-config.js) routes

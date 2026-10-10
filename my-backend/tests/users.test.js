@@ -35,11 +35,11 @@ test("health check is also available at /api/health", async () => {
   assert.equal(typeof response.body.status, "string");
 });
 
-test("CORS allows the Netlify site and does not reflect arbitrary origins", async () => {
-  const allowed = await request(app)
-    .get("/health")
-    .set("Origin", "https://elibuvtoledo.netlify.app");
-  assert.equal(allowed.headers["access-control-allow-origin"], "https://elibuvtoledo.netlify.app");
+test("CORS allows the deployed Netlify sites and does not reflect arbitrary origins", async () => {
+  for (const origin of ["https://elibuv.netlify.app", "https://elibuvtoledo.netlify.app"]) {
+    const allowed = await request(app).get("/health").set("Origin", origin);
+    assert.equal(allowed.headers["access-control-allow-origin"], origin);
+  }
 
   const rejected = await request(app)
     .get("/health")

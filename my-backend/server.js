@@ -17,6 +17,7 @@ const port = Number(process.env.PORT) || 5000;
 const allowedOrigins = new Set([
   "http://localhost:3000",
   "http://127.0.0.1:3000",
+  "https://elibuv.netlify.app",
   "https://elibuvtoledo.netlify.app",
   ...(process.env.FRONTEND_ORIGINS || "")
     .split(",")
