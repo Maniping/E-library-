@@ -85,13 +85,13 @@
       <div class="login-error" id="loginError"></div>
     </form>
     <div class="demo-accounts hidden" id="demoAccounts" aria-hidden="true">
-      <strong>Demo sign-in</strong>
-      <span>Select a role to fill the demo credentials.</span>
+      <strong>Local demo sign-in</strong>
+      <span>Select a role to load local test credentials.</span>
       <div class="demo-account-actions">
         <button type="button" class="quick-login" data-demo-role="student">Student</button>
         <button type="button" class="quick-login" data-demo-role="faculty">Faculty</button>
       </div>
-      <small>Demo accounts use shared credentials and are for testing only.</small>
+      <small id="demoStatus" role="status" aria-live="polite">Available only in local development.</small>
     </div>
   </div>
 </div>

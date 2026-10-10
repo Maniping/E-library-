@@ -1,9 +1,7 @@
 export const DB_KEY = 'uv_arc_db_v14';
 export const API_BASE = typeof window !== 'undefined' && window.UV_API_BASE
   ? window.UV_API_BASE.replace(/\/+$/, '')
-  : (typeof location !== 'undefined' && ['localhost', '127.0.0.1'].includes(location.hostname)
-      ? 'http://localhost:5000'
-      : '');
+  : '';
 export const API_BASE_CANDIDATES = [API_BASE];
 
 export const defaultDB = {

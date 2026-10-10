@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +11,11 @@ mkdirSync(output, { recursive: true });
 for (const file of ['index.html', 'api-config.js', 'src']) {
   cpSync(resolve(root, file), resolve(output, file), { recursive: true });
 }
+
+writeFileSync(
+  resolve(output, 'api-config.js'),
+  "window.UV_API_BASE = 'https://elibtoledo-backend.onrender.com';\nwindow.UV_DEMO_LOGIN_ENABLED = false;\n"
+);
 
 const publicDirectory = resolve(root, 'public');
 if (existsSync(publicDirectory)) {

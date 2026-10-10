@@ -28,3 +28,38 @@ test("public bootstrap contains rooms but no seeded demo users or reservations",
   assert.equal("users" in response.body, false);
   assert.equal("reservations" in response.body, false);
 });
+
+test("health check is also available at /api/health", async () => {
+  const response = await request(app).get("/api/health");
+  assert.ok([200, 503].includes(response.status));
+  assert.equal(typeof response.body.status, "string");
+});
+
+test("CORS allows the Netlify site and does not reflect arbitrary origins", async () => {
+  const allowed = await request(app)
+    .get("/health")
+    .set("Origin", "https://elibuvtoledo.netlify.app");
+  assert.equal(allowed.headers["access-control-allow-origin"], "https://elibuvtoledo.netlify.app");
+
+  const rejected = await request(app)
+    .get("/health")
+    .set("Origin", "https://untrusted.example");
+  assert.equal(rejected.headers["access-control-allow-origin"], undefined);
+});
+
+test("demo credentials endpoint is disabled unless explicitly enabled for local development", async () => {
+  const previousEnvironment = process.env.NODE_ENV;
+  const previousEnabled = process.env.DEMO_ACCOUNTS_ENABLED;
+  process.env.NODE_ENV = "production";
+  process.env.DEMO_ACCOUNTS_ENABLED = "true";
+  try {
+    const response = await request(app).get("/api/demo-accounts/student");
+    assert.equal(response.status, 404);
+    assert.equal(response.body.error, "Demo sign-in is available only in local development.");
+  } finally {
+    if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousEnvironment;
+    if (previousEnabled === undefined) delete process.env.DEMO_ACCOUNTS_ENABLED;
+    else process.env.DEMO_ACCOUNTS_ENABLED = previousEnabled;
+  }
+});

@@ -1,4 +1,4 @@
-import { hydrateDB, checkBackendAvailability, db, persist } from './utils/storage.js';
+import { API_BASE, hydrateDB, checkBackendAvailability, db, persist } from './utils/storage.js';
 import { api } from '../css/api.js';
 import { state } from './utils/state.js';
 import { $, esc, showToast } from './utils/dom.js';
@@ -90,14 +90,9 @@ function togglePw(id, btn) {
 }
 window.togglePw = togglePw;
 
-const DEMO_ACCOUNTS = {
-  student: { id: '2023-00123', password: 'password123' },
-  faculty: { id: 'F-1024', password: 'password123' },
-};
-
 function revealDemoAccounts() {
   const panel = $('demoAccounts');
-  if (!panel) return;
+  if (!panel || window.UV_DEMO_LOGIN_ENABLED !== true) return;
   panel.classList.remove('hidden');
   panel.setAttribute('aria-hidden', 'false');
 }
@@ -109,12 +104,27 @@ function hideDemoAccounts() {
   panel.setAttribute('aria-hidden', 'true');
 }
 
-function fillDemoAccount(role) {
-  const account = DEMO_ACCOUNTS[role];
-  if (!account) return;
-  $('loginId').value = account.id;
-  $('loginPassword').value = account.password;
-  $('loginError').textContent = '';
+async function fillDemoAccount(role) {
+  if (!['student', 'faculty'].includes(role)) return;
+  const status = $('demoStatus');
+  status.textContent = 'Loading local demo credentials...';
+  try {
+    const response = await fetch(`${API_BASE}/api/demo-accounts/${role}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Local demo sign-in is unavailable.');
+    if (typeof result.id !== 'string' || typeof result.password !== 'string') {
+      throw new Error('The local demo credentials are not configured correctly.');
+    }
+    $('loginId').value = result.id;
+    $('loginPassword').value = result.password;
+    $('loginError').textContent = '';
+    status.textContent = 'Credentials loaded. Select Sign In to continue.';
+  } catch (error) {
+    status.textContent = error.message || 'Could not load local demo credentials.';
+  }
 }
 
 /* ============================================================
@@ -1531,7 +1541,7 @@ function wireEvents() {
     input?.addEventListener('click', revealDemoAccounts);
   });
   $('demoAccounts')?.querySelectorAll('[data-demo-role]').forEach(button => {
-    button.addEventListener('click', () => fillDemoAccount(button.dataset.demoRole));
+    button.addEventListener('click', () => { void fillDemoAccount(button.dataset.demoRole); });
   });
   document.addEventListener('click', event => {
     if (!event.target.closest('#loginId, #loginPassword, #demoAccounts')) hideDemoAccounts();

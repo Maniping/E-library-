@@ -53,6 +53,8 @@ This starts:
 4. Keep `.env` and the service-role secret out of source control and frontend configuration.
    On Render, add all four values as backend Environment Variables. Set the service root
    directory to `my-backend`, build command to `npm install`, and start command to `npm start`.
+   Set `NODE_ENV=production` and `FRONTEND_ORIGINS` to the exact comma-separated HTTPS origins
+   serving the app.
 5. Deploy the frontend to Netlify using the included [`netlify.toml`](./netlify.toml).
    It builds with `npm run build:netlify` and publishes only `dist` (the frontend files),
    excluding backend code and environment files. [`api-config.js`](./api-config.js) routes
@@ -61,8 +63,9 @@ This starts:
 
 The backend does not start in a usable database mode until the environment variables and SQL
 migration are applied. Auth users and their matching `public.profiles` rows are required before
-they can sign in. Focus the ID or password field on the login form to reveal the shared Student
-and Faculty demo sign-ins; these accounts are for testing only. There is no demo Admin account.
+they can sign in. Local demo sign-ins are enabled only in development on loopback; set their IDs
+and shared password only in the ignored backend `.env`. Focusing a login field reveals the local
+demo selector. Production builds contain no demo credentials or demo Admin account.
 After signing in as an administrator, use **Create Account** to add Student or Faculty accounts.
 Public self-registration and creating additional Admin accounts are intentionally disabled.
 
