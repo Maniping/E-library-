@@ -35,22 +35,35 @@ This starts:
 
 ## Connect Supabase
 
-1. In the Supabase SQL Editor for the `elibtoledo` project, run
-   [`my-backend/migrations/001_supabase_app_state.sql`](./my-backend/migrations/001_supabase_app_state.sql).
-   The existing `profiles` and `reservations` tables and RLS policies must already exist.
-2. Copy [`my-backend/.env.example`](./my-backend/.env.example) to `my-backend/.env`.
+1. Copy [`my-backend/.env.example`](./my-backend/.env.example) to `my-backend/.env`.
    Set `DATABASE_URL` to the **Session Pooler** URI, `SUPABASE_URL` to the project URL,
    `SUPABASE_ANON_KEY` to the publishable/anon key, and
    `SUPABASE_SERVICE_ROLE_KEY` to the server-only service-role secret.
-3. Keep `.env` and the service-role secret out of source control and frontend configuration.
+2. In the Supabase SQL Editor for the project, run
+   [`my-backend/migrations/001_supabase_app_state.sql`](./my-backend/migrations/001_supabase_app_state.sql).
+   The existing `profiles` and `reservations` tables and RLS policies must already exist.
+3. Verify the backend can initialize its schema with:
+   ```bash
+   cd my-backend
+   npm run db:init
+   npm run db:check
+   ```
+   PostgreSQL connections validate TLS using the Supabase root CA in
+   [`my-backend/certs/supabase-root-ca.crt`](./my-backend/certs/supabase-root-ca.crt).
+4. Keep `.env` and the service-role secret out of source control and frontend configuration.
    On Render, add all four values as backend Environment Variables. Set the service root
    directory to `my-backend`, build command to `npm install`, and start command to `npm start`.
-4. Set `window.UV_API_BASE` in [`api-config.js`](./api-config.js) to the deployed backend's
-   public HTTPS URL, then redeploy the Netlify frontend. The URL is public configuration;
-   never place a database password or service-role key there.
+5. Deploy the frontend to Netlify using the included [`netlify.toml`](./netlify.toml).
+   It builds with `npm run build:netlify` and publishes only `dist` (the frontend files),
+   excluding backend code and environment files. [`api-config.js`](./api-config.js) routes
+   hosted sites to the Render backend URL. The URL is public configuration; never put database
+   passwords or service-role keys in frontend files.
 
 The backend does not start in a usable database mode until the environment variables and SQL
-migration are applied. The application no longer includes demo accounts. Auth users and their
-matching `public.profiles` rows are required before they can sign in.
+migration are applied. Auth users and their matching `public.profiles` rows are required before
+they can sign in. Focus the ID or password field on the login form to reveal the shared Student
+and Faculty demo sign-ins; these accounts are for testing only. There is no demo Admin account.
+After signing in as an administrator, use **Create Account** to add Student or Faculty accounts.
+Public self-registration and creating additional Admin accounts are intentionally disabled.
 
 ## Project Structure

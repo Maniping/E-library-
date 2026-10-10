@@ -90,6 +90,33 @@ function togglePw(id, btn) {
 }
 window.togglePw = togglePw;
 
+const DEMO_ACCOUNTS = {
+  student: { id: '2023-00123', password: 'password123' },
+  faculty: { id: 'F-1024', password: 'password123' },
+};
+
+function revealDemoAccounts() {
+  const panel = $('demoAccounts');
+  if (!panel) return;
+  panel.classList.remove('hidden');
+  panel.setAttribute('aria-hidden', 'false');
+}
+
+function hideDemoAccounts() {
+  const panel = $('demoAccounts');
+  if (!panel) return;
+  panel.classList.add('hidden');
+  panel.setAttribute('aria-hidden', 'true');
+}
+
+function fillDemoAccount(role) {
+  const account = DEMO_ACCOUNTS[role];
+  if (!account) return;
+  $('loginId').value = account.id;
+  $('loginPassword').value = account.password;
+  $('loginError').textContent = '';
+}
+
 /* ============================================================
    SIDEBAR
    ============================================================ */
@@ -907,7 +934,7 @@ function generateAccountId(role) {
 function renderCreateAccount() {
   return `
     <div class="page-title"><i class="fas fa-user-plus"></i> Create Account</div>
-    <div class="page-sub">Add a student, faculty, or admin</div>
+    <div class="page-sub">Create a Student or Faculty account. Admin accounts are managed separately.</div>
     <div style="background:var(--bg-card);padding:clamp(16px,3vw,28px);border-radius:20px;border:1px solid var(--border);max-width:640px;margin-bottom:20px">
       <form id="createAccountForm">
         <div class="form-group">
@@ -958,11 +985,15 @@ async function createAccount(e) {
   setFormSubmitting(button, true, 'Creating account...');
   await new Promise(resolve => setTimeout(resolve, 0));
   try {
-    const newUser = await api.createUser({
+    const createdUser = await api.createUser({
       id, password, name, role, email,
       section: role === 'student' ? $('newSection').value.trim() : '',
       dept: role === 'faculty' ? $('newDept').value.trim() : '',
     });
+    const newUser = { ...(createdUser || {}) };
+    delete newUser.password;
+    delete newUser.passwordHash;
+    delete newUser.token;
     db.users.push(newUser);
     db.registry[id] = { name, section: newUser.section, dept: newUser.dept, email };
     await persist({ sync: false });
@@ -1385,6 +1416,8 @@ async function handleLogin(e) {
     state.currentPage = 'dashboard';
     renderSidebar();
     renderContent();
+    $('loginForm').reset();
+    hideDemoAccounts();
     showToast(`Welcome back, ${user.name.split(' ')[0]}!`, 'success');
   } catch (error) {
     api.logout();
@@ -1492,6 +1525,17 @@ function openUserSheet() {
    ============================================================ */
 function wireEvents() {
   $('loginForm')?.addEventListener('submit', handleLogin);
+  ['loginId', 'loginPassword'].forEach(id => {
+    const input = $(id);
+    input?.addEventListener('focus', revealDemoAccounts);
+    input?.addEventListener('click', revealDemoAccounts);
+  });
+  $('demoAccounts')?.querySelectorAll('[data-demo-role]').forEach(button => {
+    button.addEventListener('click', () => fillDemoAccount(button.dataset.demoRole));
+  });
+  document.addEventListener('click', event => {
+    if (!event.target.closest('#loginId, #loginPassword, #demoAccounts')) hideDemoAccounts();
+  });
   document.querySelectorAll('[data-toggle-pw]').forEach(btn => {
     btn.addEventListener('click', () => togglePw(btn.dataset.togglePw, btn));
   });

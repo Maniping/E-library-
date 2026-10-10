@@ -20,6 +20,7 @@ async function authRequest(path, { key = anonKey, ...options } = {}) {
     headers: {
       apikey: key,
       "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
       ...(options.headers || {}),
     },
   });
@@ -86,6 +87,14 @@ async function createAuthUser({ email, password, name }) {
   });
 }
 
+async function deleteAuthUser(userId) {
+  requireAuthConfig({ admin: true });
+  return authRequest(`admin/users/${encodeURIComponent(userId)}`, {
+    key: serviceRoleKey,
+    method: "DELETE",
+  });
+}
+
 async function updatePassword(accessToken, email, currentPassword, password) {
   requireAuthConfig();
   await authRequest("token?grant_type=password", {
@@ -106,6 +115,7 @@ async function requireAdminById(userId) {
 
 module.exports = {
   createAuthUser,
+  deleteAuthUser,
   getAuthUser,
   getProfile,
   requireAdminById,

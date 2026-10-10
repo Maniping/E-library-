@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon --delay 1 server.js",
+    "db:init": "node db-init.js",
+    "db:check": "node db-check.js",
     "test": "node --test"
   },
   "dependencies": {

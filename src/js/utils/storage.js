@@ -30,22 +30,45 @@ export const defaultDB = {
 export let db = null;
 let pendingRemoteSave = Promise.resolve();
 
+function sanitizeUserRecord(user) {
+  if (!user || typeof user !== 'object') return null;
+  const safeUser = { ...user };
+  for (const key of ['password', 'passwordHash', 'secret', 'token']) {
+    delete safeUser[key];
+  }
+  return safeUser;
+}
+
+function sanitizeSnapshotForStorage(snapshot) {
+  const source = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  return {
+    ...source,
+    users: Array.isArray(source.users) ? source.users.map(sanitizeUserRecord).filter(Boolean) : [],
+    rooms: Array.isArray(source.rooms) ? source.rooms.map(room => (room && typeof room === 'object' ? { ...room } : room)).filter(Boolean) : [],
+    reservations: Array.isArray(source.reservations) ? source.reservations.map(reservation => (reservation && typeof reservation === 'object' ? { ...reservation } : reservation)).filter(Boolean) : [],
+    sessions: Array.isArray(source.sessions) ? source.sessions.map(session => (session && typeof session === 'object' ? { ...session } : session)).filter(Boolean) : [],
+    checkins: Array.isArray(source.checkins) ? source.checkins.map(checkin => (checkin && typeof checkin === 'object' ? { ...checkin } : checkin)).filter(Boolean) : [],
+    registry: source.registry && typeof source.registry === 'object' ? { ...source.registry } : {},
+    draft: source.draft == null ? null : JSON.parse(JSON.stringify(source.draft)),
+  };
+}
+
 function normalizeSnapshot(snapshot) {
   const source = snapshot && typeof snapshot === 'object' ? snapshot : {};
   const fallback = JSON.parse(JSON.stringify(defaultDB));
-  const clone = value => JSON.parse(JSON.stringify(value));
+  const sanitized = sanitizeSnapshotForStorage(source);
   return {
     ...fallback,
-    ...source,
-    users: Array.isArray(source.users) ? clone(source.users) : fallback.users,
-    rooms: Array.isArray(source.rooms) ? clone(source.rooms) : fallback.rooms,
-    reservations: Array.isArray(source.reservations) ? clone(source.reservations) : fallback.reservations,
-    sessions: Array.isArray(source.sessions) ? clone(source.sessions) : fallback.sessions,
-    checkins: Array.isArray(source.checkins) ? clone(source.checkins) : fallback.checkins,
-    registry: source.registry && typeof source.registry === 'object' ? clone(source.registry) : fallback.registry,
-    draft: source.draft == null ? null : clone(source.draft),
-    nextResId: source.nextResId ?? fallback.nextResId,
-    nextSessionId: source.nextSessionId ?? fallback.nextSessionId,
+    ...sanitized,
+    users: Array.isArray(sanitized.users) ? sanitized.users.map(sanitizeUserRecord).filter(Boolean) : fallback.users,
+    rooms: Array.isArray(sanitized.rooms) ? sanitized.rooms : fallback.rooms,
+    reservations: Array.isArray(sanitized.reservations) ? sanitized.reservations : fallback.reservations,
+    sessions: Array.isArray(sanitized.sessions) ? sanitized.sessions : fallback.sessions,
+    checkins: Array.isArray(sanitized.checkins) ? sanitized.checkins : fallback.checkins,
+    registry: sanitized.registry && typeof sanitized.registry === 'object' ? sanitized.registry : fallback.registry,
+    draft: sanitized.draft == null ? null : sanitized.draft,
+    nextResId: sanitized.nextResId ?? fallback.nextResId,
+    nextSessionId: sanitized.nextSessionId ?? fallback.nextSessionId,
   };
 }
 
@@ -129,9 +152,16 @@ export async function checkBackendAvailability() {
 }
 
 export async function persist({ sync = true } = {}) {
+  if (!db) {
+    setCurrentDB(defaultDB);
+  }
+
+  const safeDb = sanitizeSnapshotForStorage(db ?? defaultDB);
+  db = safeDb;
+
   try {
-    localStorage.setItem(DB_KEY, JSON.stringify(db));
-    if (typeof window !== 'undefined') window.db = db;
+    localStorage.setItem(DB_KEY, JSON.stringify(safeDb));
+    if (typeof window !== 'undefined') window.db = safeDb;
   } catch (cause) {
     const error = new Error('Could not save your changes on this device. Check browser storage and try again.');
     error.cause = cause;
@@ -140,9 +170,9 @@ export async function persist({ sync = true } = {}) {
 
   const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('uv_arc_access_token') : null;
   const currentUserId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('uv_arc_user_id') : null;
-  const currentUser = db?.users.find(user => String(user.id) === currentUserId);
+  const currentUser = safeDb?.users.find(user => String(user.id) === currentUserId);
   if (sync && token && currentUser?.role === 'admin') {
-    const snapshot = JSON.stringify(db);
+    const snapshot = JSON.stringify(safeDb);
     pendingRemoteSave = pendingRemoteSave
       .catch(() => {})
       .then(async () => {

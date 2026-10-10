@@ -1,7 +1,7 @@
 const express = require("express");
 const { query } = require("../db");
 const { authenticate } = require("../middleware/authenticate");
-const { createAuthUser, getProfile } = require("../supabase-auth");
+const { createAuthUser, deleteAuthUser } = require("../supabase-auth");
 
 const router = express.Router();
 router.use(authenticate);
@@ -55,11 +55,21 @@ router.post("/", async (req, res, next) => {
   if ([id, email, password, name].some((value) => typeof value !== "string" || !value.trim())) {
     return res.status(400).json({ error: "ID, email, name, and password are required." });
   }
+  if (password.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters." });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ error: "Enter a valid email address." });
+  }
+  if ([id, name].some((value) => value.trim().length > 200) || email.trim().length > 320) {
+    return res.status(400).json({ error: "One or more account fields are too long." });
+  }
   const normalizedRole = typeof role === "string" ? role[0].toUpperCase() + role.slice(1).toLowerCase() : "";
   if (!["Student", "Faculty"].includes(normalizedRole)) {
     return res.status(400).json({ error: "New accounts must be Student or Faculty." });
   }
 
+  let authUser;
   try {
     const exists = await query(
       "SELECT 1 FROM public.profiles WHERE lower(student_id)=lower($1) OR lower(email)=lower($2) LIMIT 1",
@@ -67,7 +77,7 @@ router.post("/", async (req, res, next) => {
     );
     if (exists.rowCount) return res.status(409).json({ error: "That ID or email is already registered." });
 
-    const authUser = await createAuthUser({ email: email.trim(), password, name: name.trim() });
+    authUser = await createAuthUser({ email: email.trim(), password, name: name.trim() });
     const { rows } = await query(
       `INSERT INTO public.profiles (id, full_name, role, student_id, email, section, dept, bio, qr_data)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'',$8)
@@ -85,6 +95,13 @@ router.post("/", async (req, res, next) => {
     );
     return res.status(201).json(toUser(rows[0]));
   } catch (error) {
+    if (authUser?.id) {
+      try {
+        await deleteAuthUser(authUser.id);
+      } catch (cleanupError) {
+        console.error("Could not remove the Auth user after profile creation failed.", cleanupError);
+      }
+    }
     return next(error);
   }
 });

@@ -255,6 +255,35 @@
   margin-top: 8px;
   min-height: 20px;
 }
+.demo-accounts {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text-muted);
+  text-align: left;
+  font-size: .82rem;
+}
+.demo-accounts strong { color: var(--text-primary); }
+.demo-account-actions { display: flex; gap: 8px; }
+.quick-login {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.quick-login:hover, .quick-login:focus-visible {
+  border-color: var(--uv-green);
+  outline: 2px solid var(--uv-gold);
+}
+.demo-accounts small { color: var(--text-faint); }
 
 /* ===== APP CONTAINER ===== */
 #appContainer {

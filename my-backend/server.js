@@ -10,6 +10,7 @@ const usersRouter = require("./routes/users");
 const { authenticate } = require("./middleware/authenticate");
 const { updatePassword } = require("./supabase-auth");
 const { createInitialState } = require("./store");
+const { ensureDatabaseReady } = require("./db");
 
 const app = express();
 const port = Number(process.env.PORT) || 5000;
@@ -76,17 +77,30 @@ app.use((err, req, res, next) => {
 });
 
 if (require.main === module) {
-  const server = app.listen(port, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${port}`);
-  });
-
-  server.on("error", (error) => {
-    if (error.code === "EADDRINUSE") {
-      console.error(`Port ${port} is already in use. Stop the existing process or change PORT in your .env file.`);
-      process.exit(1);
+  (async () => {
+    const status = await ensureDatabaseReady();
+    if (!status.ready && status.configured) {
+      console.warn(`Database schema check failed: ${status.message}`);
+    }
+    if (!status.configured) {
+      console.warn("Database schema skipped: DATABASE_URL is not configured.");
     }
 
-    throw error;
+    const server = app.listen(port, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${port}`);
+    });
+
+    server.on("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        console.error(`Port ${port} is already in use. Stop the existing process or change PORT in your .env file.`);
+        process.exit(1);
+      }
+
+      throw error;
+    });
+  })().catch((error) => {
+    console.error("Unable to initialize the database schema.", error);
+    process.exit(1);
   });
 }
 

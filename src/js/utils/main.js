@@ -761,7 +761,7 @@ function renderAccounts() {
 function renderCreateAccount() {
   return `
     <div class="page-title"><i class="fas fa-user-plus"></i> Create Account</div>
-    <div class="page-sub">Add a student, faculty, or admin</div>
+    <div class="page-sub">Create a Student or Faculty account. Admin accounts are managed separately.</div>
     <div style="background:var(--bg-card);padding:clamp(16px,3vw,28px);border-radius:20px;border:1px solid var(--border);max-width:640px;margin-bottom:20px">
       <form id="createAccountForm">
         <div class="form-group">
@@ -805,7 +805,7 @@ function createAccount(e) {
   const role = $('newRole').value;
   if (!name || !id || !password) { showToast('Please fill in all fields', 'error'); return; }
   if (db.users.some(u => normalizeId(u.id) === normalizeId(id))) { showToast('ID already exists', 'error'); return; }
-  const newUser = { id, password, name, role, email, qrData: generateQrData(id, role), bio: '', image: null };
+  const newUser = { id, name, role, email, qrData: generateQrData(id, role), bio: '', image: null };
   if (role === 'student') newUser.section = $('newSection').value.trim();
   if (role === 'faculty') newUser.dept = $('newDept').value.trim();
   db.users.push(newUser);
